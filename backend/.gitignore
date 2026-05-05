@@ -1,0 +1,52 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Testing / type checking / linters
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model / Hugging Face / PyTorch caches (common for ML backends)
+.cache/
+huggingface/
+torch/
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
