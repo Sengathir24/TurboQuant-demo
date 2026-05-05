@@ -6,7 +6,7 @@ Cursor: this is the most important file. Every benchmark goes through here.
 """
 
 import torch, numpy as np, time, gc, asyncio, logging
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Any
 from dataclasses import dataclass, field
 from transformers import (
     AutoModelForCausalLM, AutoModelForSeq2SeqLM,
@@ -123,17 +123,54 @@ class KVCompressorHook:
             "bytes_saved": 0, "calls": 0
         }
 
-    def __call__(self, module, args, output):
-        # output structure varies by model family — handle both
-        if isinstance(output, tuple):
-            if len(output) >= 2 and isinstance(output[1], tuple):
-                # GPT-2 style: (hidden, (k, v), ...)
-                k, v = output[1]
-                t0 = time.perf_counter()
-                k_hat, v_hat = self._compress_kv(k, v)
-                ms = (time.perf_counter() - t0) * 1000
-                self.stats["compress_ms"].append(ms)
-                return (output[0], (k_hat, v_hat)) + output[2:]
+    def forward_hook(
+        self, module: Any, args: tuple, kwargs: Optional[dict], output: Any
+    ):
+        """
+        Modern transformers (4.40+) return (attn_out, attn_weights) and store KV in
+        past_key_values (DynamicCache). Older builds returned (attn_out, (k, v)).
+        """
+        k: Optional[torch.Tensor] = None
+        v: Optional[torch.Tensor] = None
+        cache_layer: Any = None
+
+        kw = kwargs or {}
+        past = kw.get("past_key_values")
+        if past is not None:
+            try:
+                from transformers.cache_utils import EncoderDecoderCache
+                if isinstance(past, EncoderDecoderCache):
+                    past = past.self_attention_cache
+            except ImportError:
+                pass
+            li = getattr(module, "layer_idx", None)
+            if past is not None and hasattr(past, "layers") and li is not None:
+                if li < len(past.layers):
+                    cache_layer = past.layers[li]
+                    if getattr(cache_layer, "is_initialized", False) and cache_layer.keys.numel() > 0:
+                        k, v = cache_layer.keys, cache_layer.values
+
+        if k is None and isinstance(output, tuple) and len(output) >= 2:
+            second = output[1]
+            if isinstance(second, tuple) and len(second) == 2:
+                maybe_k, maybe_v = second
+                if torch.is_tensor(maybe_k) and torch.is_tensor(maybe_v):
+                    k, v = maybe_k, maybe_v
+
+        if k is None or v is None:
+            return output
+
+        t0 = time.perf_counter()
+        k_hat, v_hat = self._compress_kv(k, v)
+        ms = (time.perf_counter() - t0) * 1000
+        self.stats["compress_ms"].append(ms)
+
+        if cache_layer is not None:
+            with torch.no_grad():
+                cache_layer.keys = k_hat.to(dtype=k.dtype)
+                cache_layer.values = v_hat.to(dtype=v.dtype)
+        elif isinstance(output, tuple) and len(output) >= 2 and isinstance(output[1], tuple):
+            return (output[0], (k_hat, v_hat)) + output[2:]
         return output
 
     def _compress_kv(self, k: torch.Tensor, v: torch.Tensor):
@@ -264,7 +301,7 @@ class TurboEngine:
         layers = self._get_attention_layers()
         for i, layer in enumerate(layers):
             hook_obj = KVCompressorHook(self.tq, layer_idx=i)
-            h = layer.register_forward_hook(hook_obj)
+            h = layer.register_forward_hook(hook_obj.forward_hook, with_kwargs=True)
             self.hooks.append(h)
             self.kv_hooks.append(hook_obj)
         logger.info(f"Attached TurboQuant hooks to {len(layers)} layers")
