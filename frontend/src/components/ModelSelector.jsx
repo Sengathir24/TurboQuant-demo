@@ -13,9 +13,9 @@ const FAMILY_COLORS = {
 
 export default function ModelSelector() {
   const [models, setModels]       = useState([])
-  const [selected, setSelected]   = useState("gpt2-medium")
+  const [selected, setSelected]   = useState("gpt2")
   const [filterFamily, setFilter] = useState("All")
-  const { bits, mode, setBits, setMode, loadingModel, setLoading, setModelLoaded, setError, loadError } = useModelStore()
+  const { bits, mode, compressionRatio, setBits, setMode, loadingModel, setLoading, setModelLoaded, setError, loadError } = useModelStore()
 
   useEffect(() => {
     api.models().then(d => setModels(d.models || []))
@@ -106,8 +106,9 @@ export default function ModelSelector() {
         <div className="config-group">
           <label>Compression</label>
           <div className="compression-preview">
-            <span className="ratio-big">{Math.round(32 / (bits - (mode==="ip"?0:0)))}×</span>
-            <span className="ratio-sub">vs 32-bit</span>
+            <span className="ratio-big">{(32 / bits).toFixed(1)}×</span>
+            <span className="ratio-sub">theory vs 32-bit</span>
+            <span className="ratio-sub">runtime: {Number(compressionRatio || 1).toFixed(2)}×</span>
           </div>
         </div>
 

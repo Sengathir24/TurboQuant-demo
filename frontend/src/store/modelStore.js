@@ -6,11 +6,13 @@ export const useModelStore = create((set) => ({
   modelId:           null,
   modelName:         null,
   modelConfig:       null,
-  bits:              3,
+  bits:              4,
   mode:              "ip",
   compressionRatio:  1.0,
   loadingModel:      false,
   loadError:         null,
+  // liveMetrics includes: avg_mse_k, avg_mse_v, avg_compress_ms,
+  //   mb_saved, compression_ratio, n_layers, vram_gb, per_layer[]
   liveMetrics:       {},
 
   setModelLoaded: (cfg) => set({
@@ -23,10 +25,11 @@ export const useModelStore = create((set) => ({
     loadError:        null,
   }),
 
-  setBits:  (b) => set({ bits: b }),
-  setMode:  (m) => set({ mode: m }),
-  setLoading: (v) => set({ loadingModel: v }),
-  setError: (e) => set({ loadError: e, loadingModel: false }),
-  setLiveMetrics: (m) => set({ liveMetrics: m }),
-  reset: () => set({ modelLoaded: false, modelId: null, modelName: null }),
+  setBits:        (b) => set({ bits: b }),
+  setMode:        (m) => set({ mode: m }),
+  setLoading:     (v) => set({ loadingModel: v }),
+  setError:       (e) => set({ loadError: e, loadingModel: false }),
+  // Merge to avoid dropping existing fields between websocket ticks
+  setLiveMetrics: (m) => set((state) => ({ liveMetrics: { ...state.liveMetrics, ...m } })),
+  reset: () => set({ modelLoaded: false, modelId: null, modelName: null, liveMetrics: {} }),
 }))

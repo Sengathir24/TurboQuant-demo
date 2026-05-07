@@ -35,7 +35,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # ── Request / Response Models ──────────────────────────────
 class LoadModelRequest(BaseModel):
     model_id: str          # e.g. "gpt2-medium"
-    bits: int = 3          # 1-4
+    bits: int = 4          # 1-4
     mode: str = "ip"       # "mse" | "ip"
     outlier_ratio: float = 0.25
 
@@ -48,11 +48,11 @@ class GenerateRequest(BaseModel):
 class VectorSearchRequest(BaseModel):
     query: str
     top_k: int = 5
-    bits: int = 3
+    bits: int = 4
 
 class RAGRequest(BaseModel):
     question: str
-    bits: int = 3
+    bits: int = 4
 
 
 # ── Routes ────────────────────────────────────────────────

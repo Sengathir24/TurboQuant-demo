@@ -11,7 +11,7 @@ const PRESETS = [
 ]
 
 export default function GenerateDemo() {
-  const { bits, mode } = useModelStore()
+  const { bits, mode, compressionRatio, liveMetrics } = useModelStore()
   const [prompt, setPrompt]         = useState(PRESETS[0])
   const [maxTokens, setMaxTokens]   = useState(150)
   const [temperature, setTemp]      = useState(0.7)
@@ -22,9 +22,9 @@ export default function GenerateDemo() {
   const [compText, setComp]         = useState("")
   const [baselineTps, setBaseTps]   = useState(null)
   const [compTps, setCompTps]       = useState(null)
-  const [compMse, setCompMse]       = useState(null)
+  const [compMse, setCompMse]       = useState(null)   // number | null
   const [bytesSaved, setBytesSaved] = useState(0)
-  const [tokenCount, setTokenCount] = useState({baseline:0, compressed:0})
+  const [tokenCount, setTokenCount] = useState({ baseline: 0, compressed: 0 })
 
   const baseRef = useRef(null)
   const compRef = useRef(null)
@@ -37,7 +37,7 @@ export default function GenerateDemo() {
     setRunning(true)
     setBaseline(""); setComp("")
     setBaseTps(null); setCompTps(null); setCompMse(null)
-    setBytesSaved(0); setTokenCount({baseline:0,compressed:0})
+    setBytesSaved(0); setTokenCount({ baseline: 0, compressed: 0 })
 
     api.streamGenerate(
       { prompt, max_new_tokens: maxTokens, temperature, compare_mode: compareMode },
@@ -45,26 +45,31 @@ export default function GenerateDemo() {
         if (chunk.run === "baseline") {
           setBaseline(p => p + chunk.token)
           setBaseTps(chunk.tps)
-          setTokenCount(c => ({...c, baseline: chunk.tokens_so_far}))
+          setTokenCount(c => ({ ...c, baseline: chunk.tokens_so_far }))
           scrollBottom(baseRef)
         }
         if (chunk.run === "compressed") {
           setComp(p => p + chunk.token)
           setCompTps(chunk.tps)
-          setCompMse(chunk.kv_mse)
-          setBytesSaved(chunk.bytes_saved)
-          setTokenCount(c => ({...c, compressed: chunk.tokens_so_far}))
+          // Keep zero/near-zero KV MSE visible instead of hiding it as "—"
+          if (Number.isFinite(chunk.kv_mse)) setCompMse(chunk.kv_mse)
+          if (chunk.bytes_saved > 0) setBytesSaved(chunk.bytes_saved)
+          setTokenCount(c => ({ ...c, compressed: chunk.tokens_so_far }))
           scrollBottom(compRef)
         }
         if (chunk.run === "summary") {
-          setBytesSaved(chunk.total_bytes_saved)
+          if (chunk.total_bytes_saved > 0) setBytesSaved(chunk.total_bytes_saved)
         }
       },
       () => setRunning(false)
     )
   }
 
-  const mbSaved = (bytesSaved / 1e6).toFixed(2)
+  const mbSaved = Number.isFinite(bytesSaved) ? (bytesSaved / 1e6).toFixed(2) : null
+  const ratioTheory = 32 / bits
+  const ratioRuntime = Number.isFinite(liveMetrics?.compression_ratio)
+    ? liveMetrics.compression_ratio
+    : compressionRatio
 
   return (
     <div className="demo-page">
@@ -79,9 +84,9 @@ export default function GenerateDemo() {
           <div className="ctrl-group">
             <label>Prompt</label>
             <div className="preset-row">
-              {PRESETS.map((p,i) => (
-                <button key={i} className={`preset-btn ${prompt===p?"on":""}`}
-                  onClick={() => setPrompt(p)}>Preset {i+1}</button>
+              {PRESETS.map((p, i) => (
+                <button key={i} className={`preset-btn ${prompt === p ? "on" : ""}`}
+                  onClick={() => setPrompt(p)}>Preset {i + 1}</button>
               ))}
             </div>
             <textarea className="prompt-input" value={prompt}
@@ -108,8 +113,8 @@ export default function GenerateDemo() {
             </label>
           </div>
         </div>
-        <button className={`run-btn ${running?"running":""}`} onClick={run} disabled={running}>
-          {running ? <><span className="spinner"/>Generating...</> : "▶  Run generation"}
+        <button className={`run-btn ${running ? "running" : ""}`} onClick={run} disabled={running}>
+          {running ? <><span className="spinner" />Generating...</> : "▶  Run generation"}
         </button>
       </div>
 
@@ -118,23 +123,29 @@ export default function GenerateDemo() {
         <div className="live-stats-row">
           <div className="stat-chip">
             <span className="sc-label">Baseline TPS</span>
-            <span className="sc-val">{baselineTps?.toFixed(1) || "—"}</span>
+            <span className="sc-val">{baselineTps != null ? baselineTps.toFixed(1) : "—"}</span>
           </div>
           <div className="stat-chip compressed">
             <span className="sc-label">Compressed TPS</span>
-            <span className="sc-val">{compTps?.toFixed(1) || "—"}</span>
+            <span className="sc-val">{compTps != null ? compTps.toFixed(1) : "—"}</span>
           </div>
           <div className="stat-chip highlight">
-            <span className="sc-label">KV MSE</span>
-            <span className="sc-val">{compMse?.toFixed(5) || "—"}</span>
+            <span className="sc-label">KV nMSE (0-1)</span>
+            <span className="sc-val">
+              {compMse != null ? compMse.toFixed(5) : "—"}
+            </span>
           </div>
           <div className="stat-chip highlight">
             <span className="sc-label">MB saved</span>
-            <span className="sc-val">{mbSaved}</span>
+            <span className="sc-val">{mbSaved != null ? mbSaved : "—"}</span>
           </div>
           <div className="stat-chip">
-            <span className="sc-label">Compression</span>
-            <span className="sc-val">{Math.round(32/bits)}× ({bits}-bit)</span>
+            <span className="sc-label">Comp (Theory)</span>
+            <span className="sc-val">{ratioTheory.toFixed(1)}× ({bits}-bit)</span>
+          </div>
+          <div className="stat-chip">
+            <span className="sc-label">Comp (Runtime)</span>
+            <span className="sc-val">{Number(ratioRuntime).toFixed(2)}×</span>
           </div>
         </div>
       )}

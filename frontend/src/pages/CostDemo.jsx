@@ -21,7 +21,7 @@ export default function CostDemo() {
   const { bits: globalBits } = useModelStore()
   const [gpu, setGpu]         = useState("T4 (16GB)")
   const [llm, setLlm]         = useState("LLaMA-3.1 8B")
-  const [bits, setBits]       = useState(globalBits || 3)
+  const [bits, setBits]       = useState(globalBits || 4)
   const [monthly_tokens, setMonthly] = useState(100)  // millions
 
   const gspec = GPU_SPECS[gpu]

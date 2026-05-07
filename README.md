@@ -1,157 +1,183 @@
 # TurboQuant Demo
-**Real-time LLM memory compression — full-stack demo with 12 HuggingFace models**
+**Production-style TurboQuant playground for LLM KV cache compression**
 
-> Implementation of [arXiv:2504.19874](https://arxiv.org/abs/2504.19874)
-> FastAPI backend · React frontend · Live KV cache compression · 5 benchmarks
+[![Paper](https://img.shields.io/badge/Paper-arXiv%3A2504.19874-red)](https://arxiv.org/abs/2504.19874)
+![Backend](https://img.shields.io/badge/Backend-FastAPI-009688)
+![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-646CFF)
+![Runtime](https://img.shields.io/badge/Runtime-Python%20%2B%20Node-blue)
+![Smoke Tests](https://img.shields.io/badge/Smoke%20Test-backend%2Fsmoke__test.py-success)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
----
+**Quick Links:** [API Docs](http://localhost:8000/docs) · [Frontend](http://localhost:5173) · `cd backend && python smoke_test.py` · [Validation Notebook](./TurboQuant_Validation_Notebook.ipynb) · [GPU Enhanced Notebook](./TurboQuant_GPU_Enhanced.ipynb)
 
-## What this does
+Real-time, full-stack demo of [TurboQuant (arXiv:2504.19874)](https://arxiv.org/abs/2504.19874) with:
+- FastAPI backend for model loading, generation, retrieval, and live metrics
+- React frontend with side-by-side baseline vs compressed outputs
+- Streamed attention/KV fidelity telemetry and compression economics
 
-| Demo tab | What runs |
-|----------|-----------|
-| ⚡ Generate | Side-by-side streaming — baseline vs TurboQuant KV cache |
-| 🔍 Vector Search | FAISS recall@k with compressed embeddings |
-| 📚 RAG | Retrieve compressed docs → generate answer |
-| 🧠 Attention | KV MSE per layer, live from WebSocket |
-| 💰 Cloud Cost | USD/1M tokens calculator across GPU × model |
+## Why this project matters
 
----
+Large language model inference is memory-bound. KV cache growth directly limits throughput, context length, and cost. TurboQuant addresses this by compressing cache vectors while preserving quality-critical signals.
 
-## Cursor: open this in 3 steps
+This repo turns that theory into an interactive system you can run locally and inspect end-to-end.
 
-### Step 1 — open the repo
-```
-File → Open Folder → select turboquant-demo/
-```
-Cursor will show you `backend/` and `frontend/` side by side.
+## Features
 
-### Step 2 — start the backend
-Open a Cursor terminal and run:
+- **Streaming generation:** baseline and compressed runs in one UI
+- **Live KV quality telemetry:** K/V nMSE, per-layer error, compression latency
+- **Vector search demo:** compressed embedding recall and latency
+- **RAG demo:** compressed retrieval + generation flow
+- **Cost calculator:** practical throughput/cost impact under different bit-widths
+- **Dual compression metrics:** theory (`32 / bits`) and effective runtime ratio
+
+## Quick start
+
+### 1) Clone/open repository
+
+Open `TurboQuant_demo/` in Cursor or your editor.
+
+### 2) Start backend
+
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+# source venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
-Visit http://localhost:8000/docs to see the auto-generated API docs.
 
-### Step 3 — start the frontend
-Open a second Cursor terminal:
+Backend docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 3) Start frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Visit http://localhost:5173
 
----
+Frontend: [http://localhost:5173](http://localhost:5173)
 
-## Architecture
+## Default runtime profile
 
-```
-turboquant-demo/
+- Default model in frontend: **GPT-2 Small (`gpt2`)**
+- Default bit-width: **4-bit**
+- Default mode: **IP + QJL**
+
+These defaults are tuned for stable demo quality and low KV nMSE in local runs.
+
+## Repository structure
+
+```text
+TurboQuant_demo/
 ├── backend/
-│   ├── main.py              ← FastAPI app, all routes
-│   ├── turbo_engine.py      ← TurboQuant math + KV hooks (READ THIS FIRST)
-│   ├── model_registry.py    ← 12 HuggingFace models, add more here
-│   ├── metrics.py           ← Prometheus-ready metrics collector
-│   └── requirements.txt
-│
-└── frontend/
-    ├── src/
-    │   ├── App.jsx           ← Root, tab routing
-    │   ├── store/
-    │   │   └── modelStore.js ← Zustand global state
-    │   ├── lib/
-    │   │   └── api.js        ← All API calls + SSE + WebSocket
-    │   ├── components/
-    │   │   ├── ModelSelector.jsx   ← HF model picker + bit config
-    │   │   └── LiveMetricsBar.jsx  ← WebSocket metrics strip
-    │   ├── pages/
-    │   │   ├── GenerateDemo.jsx    ← SSE streaming comparison
-    │   │   ├── VectorSearchDemo.jsx
-    │   │   ├── RAGDemo.jsx
-    │   │   ├── AttentionDemo.jsx
-    │   │   └── CostDemo.jsx
-    │   └── index.css         ← All styles (dark, IBM Plex Mono)
-    ├── package.json
-    └── vite.config.js
+│   ├── main.py                # FastAPI routes and request models
+│   ├── turbo_engine.py        # Core compression, KV handling, generation logic
+│   ├── model_registry.py      # Supported HuggingFace models
+│   ├── metrics.py             # Lightweight metrics collector
+│   └── smoke_test.py          # One-command backend smoke test
+├── frontend/
+│   ├── src/components/        # Model selector, live metrics strip
+│   ├── src/pages/             # Generate, Attention, RAG, Vector, Cost demos
+│   ├── src/store/modelStore.js# Zustand global state
+│   └── src/lib/api.js         # REST + SSE + WebSocket client
+├── TurboQuant_Validation_Notebook.ipynb
+└── TurboQuant_GPU_Enhanced.ipynb
 ```
 
----
+## TurboQuant in this implementation
 
-## How TurboQuant works (3 lines)
+At a high level:
 
+1. Rotate vectors with a random orthogonal matrix
+2. Quantize coordinates with Lloyd-Max codebooks
+3. Apply QJL residual correction for inner-product fidelity (IP mode)
+
+KV path used here:
+- **K cache:** IP-aware TurboQuant (Polar + QJL)
+- **V cache:** MSE-focused quantization
+
+## Validation and smoke tests
+
+Notebooks included:
+- `TurboQuant_Validation_Notebook.ipynb` — CPU-focused theorem validation and plots
+- `TurboQuant_GPU_Enhanced.ipynb` — GPU-enhanced validation workflow
+
+Run full backend smoke suite:
+
+```bash
+cd backend
+python smoke_test.py
 ```
-1. Rotate vector with random orthogonal matrix Π   → values spread evenly
-2. Round each coordinate to nearest codebook entry  → MSE compression
-3. Store sign(S·residual) — 1 bit per dim           → fixes inner product bias
+
+Optional flags:
+
+```bash
+python smoke_test.py --max-new-tokens 8 --top-k 3 --bits 4
 ```
 
-The math is in `backend/turbo_engine.py` → `TurboQuantGPU`.
+The suite covers:
+- load/generate for causal and seq2seq models
+- attention/per-layer metric population
+- vector search
+- RAG
 
----
+## Tuning guide
 
-## Adding a new HuggingFace model
+- Increase bits (`3 -> 4`) to reduce nMSE
+- Use `mse` mode when minimizing reconstruction error is primary
+- Use `ip` mode when preserving similarity/attention behavior is primary
+- For CPU demo stability, monitor `Compress ms` and choose moderate max tokens
 
-Edit `backend/model_registry.py`:
+## Add a new model
+
+Add an entry in `backend/model_registry.py`:
+
 ```python
 "my-model": ModelConfig(
     id="my-model",
     name="My Model Name",
-    hf_id="org/model-name",       # exact HuggingFace ID
+    hf_id="org/model-name",
     params="1.5B",
     context_len=4096,
     vram_fp16_gb=6.0,
-    task="causal-lm",             # or "seq2seq"
+    task="causal-lm",  # or "seq2seq"
     family="MyFamily",
-    description="What this model is good for.",
-    recommended_bits=3,
-    tags=["gpu", "long-context"]
+    description="Where this model is useful.",
+    recommended_bits=4,
+    tags=["demo", "long-context"],
 )
 ```
-It auto-appears in the frontend dropdown. No other changes needed.
 
----
+## Environment
 
-## Environment variables
+Frontend `.env`:
 
 ```bash
-# frontend/.env
-VITE_API_URL=http://localhost:8000   # backend URL
-
-# backend — no env vars needed for local dev
-# For production, set HF_HOME to a fast disk for model cache
+VITE_API_URL=http://localhost:8000
 ```
 
----
-
-## GPU vs CPU
-
-| Hardware | Works? | Recommended models |
-|----------|--------|--------------------|
-| CPU only | ✅ | distilgpt2, gpt2, flan-t5-small |
-| T4 GPU (16GB) | ✅ | gpt2-medium, flan-t5-base, opt-350m |
-| A100 (40GB) | ✅ | opt-1.3b, bloom-560m, pythia-410m |
-
-The backend auto-detects CUDA and uses fp16 on GPU, fp32 on CPU.
-
----
-
-## Paper claims validated in this demo
-
-| Theorem | Claim | Where to see it |
-|---------|-------|-----------------|
-| Lemma 1 | Coordinates follow N(0,1/d) after rotation | turbo_engine.py → TurboQuantGPU |
-| Theorem 1 | MSE ≤ √(3π/2) / 4^b | Attention tab → avg KV MSE |
-| Theorem 2 | QJL correction is unbiased | Generate tab → KV MSE stays low |
-| Theorem 3 | Within 2.7× of theoretical best | Cloud Cost tab → compression ratio |
-
----
+Backend:
+- no required env vars for local usage
+- optional: set `HF_HOME` for model cache location
 
 ## License
-MIT — use freely for research and demos.
 
-Based on: *TurboQuant: Near-Optimal Vector Quantization* (arXiv:2504.19874)
+MIT
+
+---
+Built on TurboQuant research: *Near-Optimal Vector Quantization* (arXiv:2504.19874)
+
+## UI Screenshots
+
+### 1) Model selection + compression controls
+![Model Selection and Compression Controls](./docs/images/model-selector.png)
+
+### 2) Generate tab (baseline vs compressed outputs)
+![Generate Tab Output Comparison](./docs/images/generate-compare.png)
+
+### 3) Attention score fidelity view
+![Attention Score Fidelity](./docs/images/attention-fidelity.png)

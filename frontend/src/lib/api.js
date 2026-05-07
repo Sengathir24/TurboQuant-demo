@@ -32,10 +32,22 @@ export const api = {
     }).then(resp => {
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
+      let buffer = ""
       const read = () => reader.read().then(({ done, value }) => {
-        if (done) { onDone?.(); return }
-        const text = decoder.decode(value)
-        text.split("\n").forEach(line => {
+        if (done) {
+          if (buffer.trim().startsWith("data: ")) {
+            const data = buffer.trim().slice(6).trim()
+            if (data && data !== "[DONE]") {
+              try { onToken(JSON.parse(data)) } catch {}
+            }
+          }
+          onDone?.()
+          return
+        }
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+        lines.forEach(line => {
           if (line.startsWith("data: ")) {
             const data = line.slice(6).trim()
             if (data === "[DONE]") { onDone?.(); return }
